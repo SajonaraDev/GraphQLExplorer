@@ -1,0 +1,91 @@
+import streamlit as st
+import requests
+import pandas as pd
+
+# === CONFIG ===
+AUTH_URL = "https://grasp.wtf/auth/realms/platform/protocol/openid-connect/token"
+GRAPHQL_ENDPOINT = "https://grasp.wtf/dynamicdb/v1/graphql"
+CLIENT_ID = "frontend"
+
+# === AUTHENTICATION ===
+def get_bearer_token(username, password):
+    payload = {
+        'grant_type': 'password',
+        'client_id': CLIENT_ID,
+        'username': username,
+        'password': password,
+    }
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    response = requests.post(AUTH_URL, data=payload, headers=headers)
+
+    if response.status_code != 200:
+        raise Exception("Login fehlgeschlagen")
+
+    return response.json().get("access_token")
+
+# === GRAPHQL QUERY ===
+def query_graphql(token, query):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    response = requests.post(GRAPHQL_ENDPOINT, headers=headers, json={"query": query})
+
+    if response.status_code != 200:
+        raise Exception("GraphQL-Fehler:\n" + response.text)
+
+    return response.json()
+
+# === RESULT TO TABLE ===
+def extract_table(data):
+    try:
+        raw_items = data["data"]["informationObjects"]["data"]
+        rows = []
+
+        for item in raw_items:
+            id_ = item.get("id")
+            # Finde Attribut mit Name "Bezeichnung"
+            name_attr = next((a["stringValue"] for a in item.get("attributes", []) if a["attributeDefinitionSystemName"] == "Bezeichnung"), "")
+            rows.append({"ID": id_, "Bezeichnung": name_attr})
+
+        return pd.DataFrame(rows)
+    except Exception as e:
+        st.error(f"Fehler beim Parsen der Antwort: {e}")
+        return pd.DataFrame()
+
+# === STREAMLIT UI ===
+st.title("GraphQL Explorer (grasp.wtf)")
+
+with st.form("login_form"):
+    username = st.text_input("Benutzername")
+    password = st.text_input("Passwort", type="password")
+    query = st.text_area("GraphQL Query", height=200, value="""
+    query {
+      informationObjects {
+        data {
+          id
+          attributes {
+            attributeDefinitionSystemName
+            stringValue
+          }
+        }
+      }
+    }
+    """)
+    submitted = st.form_submit_button("Absenden")
+    print(submitted)
+if submitted:
+    try:
+        st.info("Authentifiziere...")
+        token = get_bearer_token(username, password)
+        st.success("Token erhalten!")
+
+        st.info("Sende GraphQL-Query...")
+        result = query_graphql(token, query)
+        st.success("Antwort erhalten!")
+        st.json(result)
+        df = extract_table(result)
+        st.dataframe(df)
+
+    except Exception as e:
+        st.error(f"Fehler: {e}")
