@@ -38,15 +38,21 @@ def query_graphql(token, query):
 
 # === RESULT TO TABLE ===
 def extract_table(data):
+    """Create a pandas DataFrame from the GraphQL response."""
     try:
         raw_items = data["data"]["informationObjects"]["data"]
         rows = []
 
         for item in raw_items:
-            id_ = item.get("id")
-            # Finde Attribut mit Name "Bezeichnung"
-            name_attr = next((a["stringValue"] for a in item.get("attributes", []) if a["attributeDefinitionSystemName"] == "Bezeichnung"), "")
-            rows.append({"ID": id_, "Bezeichnung": name_attr})
+            row = {}
+            for key, value in item.items():
+                if key == "attributes" and isinstance(value, list):
+                    for attr in value:
+                        name = attr.get("attributeDefinitionSystemName")
+                        row[name] = attr.get("stringValue")
+                else:
+                    row[key] = value
+            rows.append(row)
 
         return pd.DataFrame(rows)
     except Exception as e:
