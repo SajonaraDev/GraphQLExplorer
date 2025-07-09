@@ -36,6 +36,43 @@ def query_graphql(token, query):
 
     return response.json()
 
+# === QUERY BUILDER ===
+def build_query(class_name: str, system_names: list[str]) -> str:
+    """Create GraphQL query string from user inputs."""
+    names = ",".join(f'"{name.strip()}"' for name in system_names if name.strip())
+    return f"""
+    query informationObjects {{
+        informationObjects(
+            options: {{ filterBy: {{ classDefinitionSystemName: {{ value: \"{class_name}\" }} }} }}
+        ) {{
+            data {{
+                id
+                attributes(systemNames: [{names}]) {{
+                    attributeDefinitionSystemName
+                    ... on InformationDateAttribute {{
+                        dateValue
+                    }}
+                    ... on InformationStringAttribute {{
+                        stringValue
+                    }}
+                    ... on InformationEnumAttribute {{
+                        enumValue {{
+                            value
+                        }}
+                        enumValueId
+                    }}
+                    ... on InformationNumberAttribute {{
+                        numberValue
+                    }}
+                    ... on InformationReferenceAttribute {{
+                        informationObjectReferenceValueIds
+                    }}
+                }}
+            }}
+        }}
+    }}
+    """
+
 # === RESULT TO TABLE ===
 def extract_table(data):
     """Create a pandas DataFrame from the GraphQL response."""
@@ -76,27 +113,22 @@ st.title("GraphQL Explorer (grasp.wtf)")
 with st.form("login_form"):
     username = st.text_input("Benutzername")
     password = st.text_input("Passwort", type="password")
-    query = st.text_area("GraphQL Query", height=200, value="""
-    query {
-      informationObjects {
-        data {
-          id
-          attributes {
-            attributeDefinitionSystemName
-            stringValue
-          }
-        }
-      }
-    }
-    """)
+    class_name = st.text_input("classDefinitionSystemName", value="Gesch\u00e4ftsprozess")
+    system_names_input = st.text_input(
+        "Systemnamen (kommagetrennt)",
+        value="BCM_RTO_min, Bezeichnung, Beschreibung",
+    )
     submitted = st.form_submit_button("Absenden")
-    print(submitted)
+
 if submitted:
     try:
         st.info("Authentifiziere...")
         token = get_bearer_token(username, password)
         st.success("Token erhalten!")
 
+        system_names = [name.strip() for name in system_names_input.split(",") if name.strip()]
+        query = build_query(class_name, system_names)
+        st.code(query, language="graphql")
         st.info("Sende GraphQL-Query...")
         result = query_graphql(token, query)
         st.success("Antwort erhalten!")
