@@ -46,7 +46,7 @@ def build_query(class_name: str, system_names: list[str]) -> str:
     query informationObjects {{
         informationObjects(
             options: {{ filterBy: {{ classDefinitionSystemName: {{ value: \"{class_name}\" }} }} }}
-        ) {{
+        )  {{
             data {{
                 id
                 attributes(systemNames: [{names}]) {{
@@ -66,8 +66,32 @@ def build_query(class_name: str, system_names: list[str]) -> str:
                     ... on InformationNumberAttribute {{
                         numberValue
                     }}
-                    ... on InformationReferenceAttribute {{
+                     ... on InformationReferenceAttribute {{
                         informationObjectReferenceValueIds
+                        informationObjectReferenceValues {{
+                            id
+                            classDefinitionSystemName
+                            attributes {{
+                                attributeDefinitionSystemName
+                                ... on InformationStringAttribute {{
+                                    stringValue
+                                }}
+                                ... on InformationNumberAttribute {{
+                                    numberValue
+                                }}
+                                ... on InformationDateAttribute {{
+                                    dateValue
+                                }}
+                                ... on InformationEnumAttribute {{
+                                    enumValue {{
+                                        value
+                                    }}
+                                }}
+                            }}
+                            keyAttribute {{
+                                stringValue
+                            }}
+                        }}
                     }}
                 }}
             }}
