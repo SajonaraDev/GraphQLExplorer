@@ -1,0 +1,31 @@
+query informationObjects {
+    informationObjects(
+        options: { filterBy: { classDefinitionSystemName: { value: "Audit" } } }
+    ) {
+        data {
+            id
+            attributes(systemNames: ["Startdatum","Bezeichnung","Status_Audit"]) {
+                attributeDefinitionSystemName
+                ... on InformationDateAttribute {
+                    dateValue
+                }
+                ... on InformationStringAttribute {
+                    stringValue
+                }
+                
+                ... on InformationEnumAttribute {
+                    enumValue {
+                        value
+                    }
+                    enumValueId
+                }
+                ... on InformationNumberAttribute {
+                    numberValue
+                }
+                ... on InformationReferenceAttribute {
+                    informationObjectReferenceValueIds
+                }
+            }
+        }
+    }
+}
