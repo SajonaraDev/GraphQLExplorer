@@ -1,10 +1,12 @@
+import os
 import streamlit as st
 import requests
 import pandas as pd
 
 # === CONFIG ===
-AUTH_URL = "https://grasp.wtf/auth/realms/platform/protocol/openid-connect/token"
-GRAPHQL_ENDPOINT = "https://grasp.wtf/dynamicdb/v1/graphql"
+BASE_URL = os.getenv("BASE_URL", "https://grasp.wtf").rstrip("/")
+AUTH_URL = f"{BASE_URL}/auth/realms/platform/protocol/openid-connect/token"
+GRAPHQL_ENDPOINT = f"{BASE_URL}/dynamicdb/v1/graphql"
 CLIENT_ID = "frontend"
 
 # === AUTHENTICATION ===
@@ -108,7 +110,7 @@ def extract_table(data):
         return pd.DataFrame()
 
 # === STREAMLIT UI ===
-st.title("GraphQL Explorer (grasp.wtf)")
+st.title(f"GraphQL Explorer ({BASE_URL})")
 
 with st.form("login_form"):
     username = st.text_input("Benutzername")
