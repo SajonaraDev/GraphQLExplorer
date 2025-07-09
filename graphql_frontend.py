@@ -40,7 +40,7 @@ def query_graphql(token, query):
 def extract_table(data):
     """Create a pandas DataFrame from the GraphQL response."""
     try:
-        raw_items = data["data"]["informationObjects"]["data"]
+        raw_items = data.get("data", {}).get("informationObjects", {}).get("data", [])
         rows = []
 
         for item in raw_items:
@@ -49,7 +49,18 @@ def extract_table(data):
                 if key == "attributes" and isinstance(value, list):
                     for attr in value:
                         name = attr.get("attributeDefinitionSystemName")
-                        row[name] = attr.get("stringValue")
+                        attr_value = None
+                        for k, v in attr.items():
+                            if k == "attributeDefinitionSystemName":
+                                continue
+                            if v is None:
+                                continue
+                            if isinstance(v, dict) and "value" in v:
+                                attr_value = v.get("value")
+                                break
+                            attr_value = v
+                            break
+                        row[name] = attr_value
                 else:
                     row[key] = value
             rows.append(row)
