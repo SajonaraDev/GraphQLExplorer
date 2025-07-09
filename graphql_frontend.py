@@ -112,18 +112,52 @@ def extract_table(data):
                 if key == "attributes" and isinstance(value, list):
                     for attr in value:
                         name = attr.get("attributeDefinitionSystemName")
-                        attr_value = None
-                        for k, v in attr.items():
-                            if k == "attributeDefinitionSystemName":
-                                continue
-                            if v is None:
-                                continue
-                            if isinstance(v, dict) and "value" in v:
-                                attr_value = v.get("value")
+                        if not name:
+                            continue
+
+                        # Handle reference attributes separately so that
+                        # attributes of the referenced object become their own
+                        # columns. They are prefixed with the referenced
+                        # classDefinitionSystemName.
+                        ref_values = attr.get("informationObjectReferenceValues")
+                        if isinstance(ref_values, list) and ref_values:
+                            # Store ids as the main column value
+                            row[name] = ",".join(
+                                str(i) for i in attr.get("informationObjectReferenceValueIds", [])
+                            )
+
+                            for ref in ref_values:
+                                prefix = ref.get("classDefinitionSystemName", "")
+                                for ref_attr in ref.get("attributes", []):
+                                    ref_attr_name = ref_attr.get("attributeDefinitionSystemName")
+                                    if not ref_attr_name:
+                                        continue
+                                    ref_value = None
+                                    for rk, rv in ref_attr.items():
+                                        if rk == "attributeDefinitionSystemName":
+                                            continue
+                                        if rv is None:
+                                            continue
+                                        if isinstance(rv, dict) and "value" in rv:
+                                            ref_value = rv.get("value")
+                                            break
+                                        ref_value = rv
+                                        break
+                                    col_name = f"{prefix}_{ref_attr_name}" if prefix else ref_attr_name
+                                    row[col_name] = ref_value
+                        else:
+                            attr_value = None
+                            for k, v in attr.items():
+                                if k == "attributeDefinitionSystemName":
+                                    continue
+                                if v is None:
+                                    continue
+                                if isinstance(v, dict) and "value" in v:
+                                    attr_value = v.get("value")
+                                    break
+                                attr_value = v
                                 break
-                            attr_value = v
-                            break
-                        row[name] = attr_value
+                            row[name] = attr_value
                 else:
                     row[key] = value
             rows.append(row)
