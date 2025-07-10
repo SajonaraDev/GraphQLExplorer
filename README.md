@@ -20,3 +20,5 @@ The app requires username and password for authentication. After logging in you 
 
 The GraphQL query is generated automatically from these inputs and the result is
 rendered as a table.
+```
+https://grasp.wtf/dynamicdb/v1/documentation/index.html#definition-Client here is the full documentation of the graphql
