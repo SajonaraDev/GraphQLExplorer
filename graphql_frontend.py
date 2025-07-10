@@ -109,6 +109,7 @@ ATTRIBUTE_FRAGMENT = """
 def build_query(class_name: str, system_names: list[str]) -> str:
     """Create GraphQL query string from user inputs."""
     names = ",".join(f'"{name.strip()}"' for name in system_names if name.strip())
+    attr_clause = f"(systemNames: [{names}])" if names else ""
     return f"""
     query informationObjects {{
         informationObjects(
@@ -117,7 +118,7 @@ def build_query(class_name: str, system_names: list[str]) -> str:
             data {{
                 id
                 clientSystemName
-                attributes(systemNames: [{names}]) {{
+                attributes{attr_clause} {{
 {ATTRIBUTE_FRAGMENT}
                 }}
             }}
@@ -141,6 +142,10 @@ def build_relationship_query(
     rel_names = ",".join(f'"{n.strip()}"' for n in rel_attrs if n.strip())
     from_names = ",".join(f'"{n.strip()}"' for n in from_attrs if n.strip())
     to_names = ",".join(f'"{n.strip()}"' for n in to_attrs if n.strip())
+
+    rel_attr_clause = f"(systemNames: [{rel_names}])" if rel_names else ""
+    from_attr_clause = f"(systemNames: [{from_names}])" if from_names else ""
+    to_attr_clause = f"(systemNames: [{to_names}])" if to_names else ""
 
     filter_parts = []
     from_filter = []
@@ -172,28 +177,20 @@ def build_relationship_query(
         )  {
             data {
                 id
-                attributes(systemNames: [%s]) {
+                attributes%s {
 %s
                 }
                 relationshipFromId
                 relationshipToId
-    """ % (filter_clause, rel_names, ATTRIBUTE_FRAGMENT)
+    """ % (filter_clause, rel_attr_clause, ATTRIBUTE_FRAGMENT)
 
     if include_from:
         query += (
-            "\n                relationshipFrom {\n                    id\n          clientSystemName\n          attributes(systemNames: ["
-            + from_names
-            + "]) {\n"
-            + ATTRIBUTE_FRAGMENT
-            + "                }\n                }"
+            "\n                relationshipFrom {\n                    id\n     clientSystemName\n          attributes" + from_attr_clause + " {\n" + ATTRIBUTE_FRAGMENT + "                }\n                }"
         )
     if include_to:
         query += (
-            "\n                relationshipTo {\n                    id\n           clientSystemName\n         attributes(systemNames: ["
-            + to_names
-            + "]) {\n"
-            + ATTRIBUTE_FRAGMENT
-            + "                }\n                }"
+            "\n                relationshipTo {\n                    id\n    clientSystemName\n         attributes" + to_attr_clause + " {\n" + ATTRIBUTE_FRAGMENT + "                }\n                }"
         )
 
     query += "\n            }\n        }\n    }\n    "
