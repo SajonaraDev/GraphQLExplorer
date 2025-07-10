@@ -3,6 +3,25 @@ import streamlit as st
 import requests
 import pandas as pd
 
+# Configure page and layout
+st.set_page_config(page_title="GraphQL Explorer", layout="wide")
+
+# Make the main container a bit wider (80% of the page width)
+st.markdown(
+    """
+    <style>
+        .main .block-container {
+            max-width: 80%;
+            padding-top: 1rem;
+            padding-right: 1rem;
+            padding-left: 1rem;
+            margin: auto;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # === CONFIG ===
 DEFAULT_BASE_URL = os.getenv("BASE_URL", "https://grasp.wtf").rstrip("/")
 CLIENT_ID = "frontend"
@@ -190,7 +209,8 @@ if submitted:
 
         system_names = [name.strip() for name in system_names_input.split(",") if name.strip()]
         query = build_query(class_name, system_names)
-        st.code(query, language="graphql")
+        with st.expander("GraphQL Query"):
+            st.code(query, language="graphql")
         st.info("Sende GraphQL-Query...")
         result = query_graphql(base_url, token, query)
         st.success("Antwort erhalten!")
