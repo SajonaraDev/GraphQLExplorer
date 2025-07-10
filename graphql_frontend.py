@@ -4,13 +4,11 @@ import requests
 import pandas as pd
 
 # === CONFIG ===
-BASE_URL = os.getenv("BASE_URL", "https://grasp.wtf").rstrip("/")
-AUTH_URL = f"{BASE_URL}/auth/realms/platform/protocol/openid-connect/token"
-GRAPHQL_ENDPOINT = f"{BASE_URL}/dynamicdb/v1/graphql"
+DEFAULT_BASE_URL = os.getenv("BASE_URL", "https://grasp.wtf").rstrip("/")
 CLIENT_ID = "frontend"
 
 # === AUTHENTICATION ===
-def get_bearer_token(username, password):
+def get_bearer_token(base_url: str, username: str, password: str):
     payload = {
         'grant_type': 'password',
         'client_id': CLIENT_ID,
@@ -18,7 +16,8 @@ def get_bearer_token(username, password):
         'password': password,
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    response = requests.post(AUTH_URL, data=payload, headers=headers)
+    auth_url = f"{base_url}/auth/realms/platform/protocol/openid-connect/token"
+    response = requests.post(auth_url, data=payload, headers=headers)
 
     if response.status_code != 200:
         raise Exception("Login fehlgeschlagen")
@@ -26,12 +25,13 @@ def get_bearer_token(username, password):
     return response.json().get("access_token")
 
 # === GRAPHQL QUERY ===
-def query_graphql(token, query):
+def query_graphql(base_url: str, token: str, query: str):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    response = requests.post(GRAPHQL_ENDPOINT, headers=headers, json={"query": query})
+    graphql_endpoint = f"{base_url}/dynamicdb/v1/graphql"
+    response = requests.post(graphql_endpoint, headers=headers, json={"query": query})
 
     if response.status_code != 200:
         raise Exception("GraphQL-Fehler:\n" + response.text)
@@ -168,9 +168,10 @@ def extract_table(data):
         return pd.DataFrame()
 
 # === STREAMLIT UI ===
-st.title(f"GraphQL Explorer ({BASE_URL})")
+st.title("GraphQL Explorer")
 
 with st.form("login_form"):
+    base_url = st.text_input("Base URL", value=DEFAULT_BASE_URL)
     username = st.text_input("Benutzername")
     password = st.text_input("Passwort", type="password")
     class_name = st.text_input("classDefinitionSystemName", value="Gesch\u00e4ftsprozess")
@@ -182,15 +183,16 @@ with st.form("login_form"):
 
 if submitted:
     try:
+        base_url = base_url.rstrip("/")
         st.info("Authentifiziere...")
-        token = get_bearer_token(username, password)
+        token = get_bearer_token(base_url, username, password)
         st.success("Token erhalten!")
 
         system_names = [name.strip() for name in system_names_input.split(",") if name.strip()]
         query = build_query(class_name, system_names)
         st.code(query, language="graphql")
         st.info("Sende GraphQL-Query...")
-        result = query_graphql(token, query)
+        result = query_graphql(base_url, token, query)
         st.success("Antwort erhalten!")
         st.json(result)
         df = extract_table(result)
