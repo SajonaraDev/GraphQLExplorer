@@ -58,6 +58,54 @@ def query_graphql(base_url: str, token: str, query: str):
     return response.json()
 
 # === QUERY BUILDER ===
+
+ATTRIBUTE_FRAGMENT = """
+                    attributeDefinitionSystemName
+                    ... on InformationDateAttribute {
+                        dateValue
+                    }
+                    ... on InformationStringAttribute {
+                        stringValue
+                    }
+                    ... on InformationEnumAttribute {
+                        enumValue {
+                            value
+                        }
+                        enumValueId
+                    }
+                    ... on InformationNumberAttribute {
+                        numberValue
+                    }
+                     ... on InformationReferenceAttribute {
+                        informationObjectReferenceValueIds
+                        informationObjectReferenceValues {
+                            id
+                            classDefinitionSystemName
+                            attributes {
+                                attributeDefinitionSystemName
+                                ... on InformationStringAttribute {
+                                    stringValue
+                                }
+                                ... on InformationNumberAttribute {
+                                    numberValue
+                                }
+                                ... on InformationDateAttribute {
+                                    dateValue
+                                }
+                                ... on InformationEnumAttribute {
+                                    enumValue {
+                                        value
+                                    }
+                                }
+                            }
+                            keyAttribute {
+                                stringValue
+                            }
+                        }
+                    }
+"""
+
+
 def build_query(class_name: str, system_names: list[str]) -> str:
     """Create GraphQL query string from user inputs."""
     names = ",".join(f'"{name.strip()}"' for name in system_names if name.strip())
@@ -69,54 +117,86 @@ def build_query(class_name: str, system_names: list[str]) -> str:
             data {{
                 id
                 attributes(systemNames: [{names}]) {{
-                    attributeDefinitionSystemName
-                    ... on InformationDateAttribute {{
-                        dateValue
-                    }}
-                    ... on InformationStringAttribute {{
-                        stringValue
-                    }}
-                    ... on InformationEnumAttribute {{
-                        enumValue {{
-                            value
-                        }}
-                        enumValueId
-                    }}
-                    ... on InformationNumberAttribute {{
-                        numberValue
-                    }}
-                     ... on InformationReferenceAttribute {{
-                        informationObjectReferenceValueIds
-                        informationObjectReferenceValues {{
-                            id
-                            classDefinitionSystemName
-                            attributes {{
-                                attributeDefinitionSystemName
-                                ... on InformationStringAttribute {{
-                                    stringValue
-                                }}
-                                ... on InformationNumberAttribute {{
-                                    numberValue
-                                }}
-                                ... on InformationDateAttribute {{
-                                    dateValue
-                                }}
-                                ... on InformationEnumAttribute {{
-                                    enumValue {{
-                                        value
-                                    }}
-                                }}
-                            }}
-                            keyAttribute {{
-                                stringValue
-                            }}
-                        }}
-                    }}
+{ATTRIBUTE_FRAGMENT}
                 }}
             }}
         }}
     }}
     """
+
+def build_relationship_query(
+    from_class: str,
+    from_id: str,
+    to_class: str,
+    to_id: str,
+    rel_attrs: list[str],
+    from_attrs: list[str],
+    to_attrs: list[str],
+    include_from: bool,
+    include_to: bool,
+) -> str:
+    """Create GraphQL query string for information relationships."""
+
+    rel_names = ",".join(f'"{n.strip()}"' for n in rel_attrs if n.strip())
+    from_names = ",".join(f'"{n.strip()}"' for n in from_attrs if n.strip())
+    to_names = ",".join(f'"{n.strip()}"' for n in to_attrs if n.strip())
+
+    filter_parts = []
+    from_filter = []
+    if from_class:
+        from_filter.append(
+            f'classDefinitionSystemName: {{ value: "{from_class}" }}'
+        )
+    if from_id:
+        from_filter.append(f'ids: ["{from_id}"]')
+    if from_filter:
+        filter_parts.append(f'relationshipFrom: [{{ {" , ".join(from_filter)} }}]')
+
+    to_filter = []
+    if to_class:
+        to_filter.append(f'classDefinitionSystemName: {{ value: "{to_class}" }}')
+    if to_id:
+        to_filter.append(f'ids: ["{to_id}"]')
+    if to_filter:
+        filter_parts.append(f'relationshipTo: [{{ {" , ".join(to_filter)} }}]')
+
+    filter_clause = (
+        f"options: {{ filterBy: {{ {' , '.join(filter_parts)} }} }}" if filter_parts else ""
+    )
+
+    query = """
+    query informationRelationships {
+        informationRelationships(
+            %s
+        )  {
+            data {
+                id
+                attributes(systemNames: [%s]) {
+%s
+                }
+                relationshipFromId
+                relationshipToId
+    """ % (filter_clause, rel_names, ATTRIBUTE_FRAGMENT)
+
+    if include_from:
+        query += (
+            "\n                relationshipFrom {\n                    id\n                    attributes(systemNames: ["
+            + from_names
+            + "]) {\n"
+            + ATTRIBUTE_FRAGMENT
+            + "                }\n                }"
+        )
+    if include_to:
+        query += (
+            "\n                relationshipTo {\n                    id\n                    attributes(systemNames: ["
+            + to_names
+            + "]) {\n"
+            + ATTRIBUTE_FRAGMENT
+            + "                }\n                }"
+        )
+
+    query += "\n            }\n        }\n    }\n    "
+    return query
 
 # === RESULT TO TABLE ===
 def extract_table(data):
@@ -186,37 +266,98 @@ def extract_table(data):
         st.error(f"Fehler beim Parsen der Antwort: {e}")
         return pd.DataFrame()
 
+def extract_relationship_table(data):
+    """Create a pandas DataFrame from relationship query response."""
+    try:
+        raw_items = data.get("data", {}).get("informationRelationships", {}).get("data", [])
+        return pd.json_normalize(raw_items)
+    except Exception as e:
+        st.error(f"Fehler beim Parsen der Antwort: {e}")
+        return pd.DataFrame()
+
 # === STREAMLIT UI ===
 st.title("GraphQL Explorer")
 
-with st.form("login_form"):
-    base_url = st.text_input("Base URL", value=DEFAULT_BASE_URL)
-    username = st.text_input("Benutzername")
-    password = st.text_input("Passwort", type="password")
-    class_name = st.text_input("classDefinitionSystemName", value="Gesch\u00e4ftsprozess")
-    system_names_input = st.text_input(
-        "Systemnamen (kommagetrennt)",
-        value="BCM_RTO_min, Bezeichnung, Beschreibung",
-    )
-    submitted = st.form_submit_button("Absenden")
+tabs = st.tabs(["Information Objects", "Relationships"])
 
-if submitted:
-    try:
-        base_url = base_url.rstrip("/")
-        st.info("Authentifiziere...")
-        token = get_bearer_token(base_url, username, password)
-        st.success("Token erhalten!")
+with tabs[0]:
+    with st.form("object_form"):
+        base_url = st.text_input("Base URL", value=DEFAULT_BASE_URL)
+        username = st.text_input("Benutzername")
+        password = st.text_input("Passwort", type="password")
+        class_name = st.text_input("classDefinitionSystemName", value="Gesch\u00e4ftsprozess")
+        system_names_input = st.text_input(
+            "Systemnamen (kommagetrennt)",
+            value="BCM_RTO_min, Bezeichnung, Beschreibung",
+        )
+        submitted = st.form_submit_button("Absenden")
 
-        system_names = [name.strip() for name in system_names_input.split(",") if name.strip()]
-        query = build_query(class_name, system_names)
-        with st.expander("GraphQL Query"):
-            st.code(query, language="graphql")
-        st.info("Sende GraphQL-Query...")
-        result = query_graphql(base_url, token, query)
-        st.success("Antwort erhalten!")
-        st.json(result)
-        df = extract_table(result)
-        st.dataframe(df)
+    if submitted:
+        try:
+            base_url = base_url.rstrip("/")
+            st.info("Authentifiziere...")
+            token = get_bearer_token(base_url, username, password)
+            st.success("Token erhalten!")
 
-    except Exception as e:
-        st.error(f"Fehler: {e}")
+            system_names = [name.strip() for name in system_names_input.split(",") if name.strip()]
+            query = build_query(class_name, system_names)
+            with st.expander("GraphQL Query"):
+                st.code(query, language="graphql")
+            st.info("Sende GraphQL-Query...")
+            result = query_graphql(base_url, token, query)
+            st.success("Antwort erhalten!")
+            st.json(result)
+            df = extract_table(result)
+            st.dataframe(df)
+
+        except Exception as e:
+            st.error(f"Fehler: {e}")
+
+with tabs[1]:
+    with st.form("relationship_form"):
+        base_url_r = st.text_input("Base URL", value=DEFAULT_BASE_URL)
+        username_r = st.text_input("Benutzername")
+        password_r = st.text_input("Passwort", type="password")
+        from_class = st.text_input("From classDefinitionSystemName")
+        from_id = st.text_input("From ID")
+        to_class = st.text_input("To classDefinitionSystemName")
+        to_id = st.text_input("To ID")
+        rel_attr_input = st.text_input("Relationship Attribute Systemnamen (kommagetrennt)")
+        from_attr_input = st.text_input("From Object Attribute Systemnamen (kommagetrennt)")
+        to_attr_input = st.text_input("To Object Attribute Systemnamen (kommagetrennt)")
+        include_from = st.checkbox("Include from object", value=True)
+        include_to = st.checkbox("Include to object", value=True)
+        submitted_rel = st.form_submit_button("Absenden")
+
+    if submitted_rel:
+        try:
+            base_url_r = base_url_r.rstrip("/")
+            st.info("Authentifiziere...")
+            token = get_bearer_token(base_url_r, username_r, password_r)
+            st.success("Token erhalten!")
+
+            rel_names = [n.strip() for n in rel_attr_input.split(",") if n.strip()]
+            from_names = [n.strip() for n in from_attr_input.split(",") if n.strip()]
+            to_names = [n.strip() for n in to_attr_input.split(",") if n.strip()]
+            query = build_relationship_query(
+                from_class,
+                from_id,
+                to_class,
+                to_id,
+                rel_names,
+                from_names,
+                to_names,
+                include_from,
+                include_to,
+            )
+            with st.expander("GraphQL Query"):
+                st.code(query, language="graphql")
+            st.info("Sende GraphQL-Query...")
+            result = query_graphql(base_url_r, token, query)
+            st.success("Antwort erhalten!")
+            st.json(result)
+            df = extract_relationship_table(result)
+            st.dataframe(df)
+
+        except Exception as e:
+            st.error(f"Fehler: {e}")
