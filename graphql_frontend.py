@@ -293,10 +293,21 @@ def extract_relationship_table(data):
                 _parse_attributes(rel_from.get("attributes", []), prefix="relationshipFrom_")
             )
 
+            rel_from = item.get("relationshipFrom") or {}
+            row["relationshipFrom_client"] = rel_from.get("clientSystemName")
+            row.update(
+                _parse_attributes(rel_from.get("attributes", []), prefix="relationshipFrom_")
+            )
+
             rel_to = item.get("relationshipTo") or {}
             row["relationshipTo_id"] = rel_to.get("id")
             row.update(
                 _parse_attributes(rel_to.get("attributes", []), prefix="relationshipTo_")
+            )
+            rel_from = item.get("relationshipTo") or {}
+            row["relationshipTo_client"] = rel_from.get("clientSystemName")
+            row.update(
+                _parse_attributes(rel_from.get("attributes", []), prefix="relationshipTo_")
             )
 
             rows.append(row)
