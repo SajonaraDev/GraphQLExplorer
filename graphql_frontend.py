@@ -199,6 +199,55 @@ def build_relationship_query(
     return query
 
 # === RESULT TO TABLE ===
+
+def _parse_attributes(attrs: list, prefix: str = "") -> dict:
+    """Convert list of attribute objects to flat dict."""
+    result: dict = {}
+    for attr in attrs or []:
+        name = attr.get("attributeDefinitionSystemName")
+        if not name:
+            continue
+
+        ref_values = attr.get("informationObjectReferenceValues")
+        if isinstance(ref_values, list) and ref_values:
+            result[f"{prefix}{name}"] = ",".join(
+                str(i) for i in attr.get("informationObjectReferenceValueIds", [])
+            )
+            for ref in ref_values:
+                ref_prefix = ref.get("classDefinitionSystemName", "")
+                for ref_attr in ref.get("attributes", []):
+                    ref_attr_name = ref_attr.get("attributeDefinitionSystemName")
+                    if not ref_attr_name:
+                        continue
+                    value = None
+                    for rk, rv in ref_attr.items():
+                        if rk == "attributeDefinitionSystemName":
+                            continue
+                        if rv is None:
+                            continue
+                        if isinstance(rv, dict) and "value" in rv:
+                            value = rv.get("value")
+                            break
+                        value = rv
+                        break
+                    col = f"{prefix}{ref_prefix}_{ref_attr_name}" if ref_prefix else f"{prefix}{ref_attr_name}"
+                    result[col] = value
+        else:
+            value = None
+            for k, v in attr.items():
+                if k == "attributeDefinitionSystemName":
+                    continue
+                if v is None:
+                    continue
+                if isinstance(v, dict) and "value" in v:
+                    value = v.get("value")
+                    break
+                value = v
+                break
+            result[f"{prefix}{name}"] = value
+    return result
+
+
 def extract_table(data):
     """Create a pandas DataFrame from the GraphQL response."""
     try:
@@ -209,54 +258,7 @@ def extract_table(data):
             row = {}
             for key, value in item.items():
                 if key == "attributes" and isinstance(value, list):
-                    for attr in value:
-                        name = attr.get("attributeDefinitionSystemName")
-                        if not name:
-                            continue
-
-                        # Handle reference attributes separately so that
-                        # attributes of the referenced object become their own
-                        # columns. They are prefixed with the referenced
-                        # classDefinitionSystemName.
-                        ref_values = attr.get("informationObjectReferenceValues")
-                        if isinstance(ref_values, list) and ref_values:
-                            # Store ids as the main column value
-                            row[name] = ",".join(
-                                str(i) for i in attr.get("informationObjectReferenceValueIds", [])
-                            )
-
-                            for ref in ref_values:
-                                prefix = ref.get("classDefinitionSystemName", "")
-                                for ref_attr in ref.get("attributes", []):
-                                    ref_attr_name = ref_attr.get("attributeDefinitionSystemName")
-                                    if not ref_attr_name:
-                                        continue
-                                    ref_value = None
-                                    for rk, rv in ref_attr.items():
-                                        if rk == "attributeDefinitionSystemName":
-                                            continue
-                                        if rv is None:
-                                            continue
-                                        if isinstance(rv, dict) and "value" in rv:
-                                            ref_value = rv.get("value")
-                                            break
-                                        ref_value = rv
-                                        break
-                                    col_name = f"{prefix}_{ref_attr_name}" if prefix else ref_attr_name
-                                    row[col_name] = ref_value
-                        else:
-                            attr_value = None
-                            for k, v in attr.items():
-                                if k == "attributeDefinitionSystemName":
-                                    continue
-                                if v is None:
-                                    continue
-                                if isinstance(v, dict) and "value" in v:
-                                    attr_value = v.get("value")
-                                    break
-                                attr_value = v
-                                break
-                            row[name] = attr_value
+                    row.update(_parse_attributes(value))
                 else:
                     row[key] = value
             rows.append(row)
@@ -269,8 +271,36 @@ def extract_table(data):
 def extract_relationship_table(data):
     """Create a pandas DataFrame from relationship query response."""
     try:
-        raw_items = data.get("data", {}).get("informationRelationships", {}).get("data", [])
-        return pd.json_normalize(raw_items)
+        raw_items = (
+            data.get("data", {})
+            .get("informationRelationships", {})
+            .get("data", [])
+        )
+        rows = []
+        for item in raw_items:
+            row = {
+                "id": item.get("id"),
+                "relationshipFromId": item.get("relationshipFromId"),
+                "relationshipToId": item.get("relationshipToId"),
+            }
+
+            row.update(_parse_attributes(item.get("attributes", [])))
+
+            rel_from = item.get("relationshipFrom") or {}
+            row["relationshipFrom_id"] = rel_from.get("id")
+            row.update(
+                _parse_attributes(rel_from.get("attributes", []), prefix="relationshipFrom_")
+            )
+
+            rel_to = item.get("relationshipTo") or {}
+            row["relationshipTo_id"] = rel_to.get("id")
+            row.update(
+                _parse_attributes(rel_to.get("attributes", []), prefix="relationshipTo_")
+            )
+
+            rows.append(row)
+
+        return pd.DataFrame(rows)
     except Exception as e:
         st.error(f"Fehler beim Parsen der Antwort: {e}")
         return pd.DataFrame()
