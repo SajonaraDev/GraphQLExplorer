@@ -116,6 +116,7 @@ def build_query(class_name: str, system_names: list[str]) -> str:
         )  {{
             data {{
                 id
+                clientSystemName
                 attributes(systemNames: [{names}]) {{
 {ATTRIBUTE_FRAGMENT}
                 }}
@@ -180,7 +181,7 @@ def build_relationship_query(
 
     if include_from:
         query += (
-            "\n                relationshipFrom {\n                    id\n                    attributes(systemNames: ["
+            "\n                relationshipFrom {\n                    id\n          clientSystemName\n          attributes(systemNames: ["
             + from_names
             + "]) {\n"
             + ATTRIBUTE_FRAGMENT
@@ -188,7 +189,7 @@ def build_relationship_query(
         )
     if include_to:
         query += (
-            "\n                relationshipTo {\n                    id\n                    attributes(systemNames: ["
+            "\n                relationshipTo {\n                    id\n           clientSystemName\n         attributes(systemNames: ["
             + to_names
             + "]) {\n"
             + ATTRIBUTE_FRAGMENT
