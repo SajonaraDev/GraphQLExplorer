@@ -2,7 +2,7 @@
 
 A small Streamlit based frontend for querying the GraphQL API. By default it
 targets `https://grasp.wtf` but you can override this using the `BASE_URL`
-environment variable.
+environment variable or by entering a different URL in the app.
 
 ## Usage
 
@@ -10,8 +10,8 @@ environment variable.
 streamlit run graphql_frontend.py
 ```
 
-Set the optional `BASE_URL` environment variable if you want to target a
-different host.
+You can specify a different server either by setting the `BASE_URL`
+environment variable or by filling in the **Base URL** field in the form.
 
 The app requires username and password for authentication. After logging in you can provide:
 
